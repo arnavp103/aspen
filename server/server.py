@@ -46,7 +46,7 @@ def admin_required(func):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    db = next(get_db())
+    db = get_db()
     network = get_network(db)
     if not network:
         raise Exception("No network configuration found")

@@ -138,6 +138,7 @@ def serve():
     click.echo(f"Network CIDR: {network.cidr}")
     click.echo(f"Server IP: {server_ip}")
     click.echo(f"WireGuard port: {network.listen_port}")
+    click.echo(f"Server Public Key: {network.server_public_key}")
     click.echo(f"Management API: {server_ip}:8000 (only accessible through VPN)\n")
 
     try:
