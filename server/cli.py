@@ -3,7 +3,7 @@ import click
 import ipaddress
 from python_wireguard import Key
 import uvicorn
-from .database import init_db, get_db, get_network, create_network, add_peer
+from .database import Peer, init_db, get_db, get_network, create_network, add_peer
 from .server import app
 
 
@@ -75,10 +75,22 @@ def create_peer(admin: bool):
     # Get peer name
     name = click.prompt("Name", type=str)
 
+    # check if peer name already exists
+    if db.query(Peer).filter_by(name=name).first():
+        click.echo("Error: Peer name already exists")
+
     # Generate a suggested IP from the network CIDR
     network_addr = ipaddress.ip_network(network.cidr)
-    server_ip = next(network_addr.hosts())  # First IP reserved for server
-    suggested_ip = str(next(network_addr.hosts()))  # Second IP for first peer
+    ips = network_addr.hosts()
+    next(ips)  # Skip first IP which is reserved for the server
+    suggested_ip = next(ips)
+    server_ip = str(next(network_addr.hosts()))
+    suggested_ip_str = str(suggested_ip)
+
+    # Find an unused IP address
+    while db.query(Peer).filter_by(ip_address=suggested_ip_str).first():
+        suggested_ip = next(ips)
+        suggested_ip_str = str(suggested_ip)
 
     ip_address = click.prompt("IP address", default=suggested_ip)
     try:

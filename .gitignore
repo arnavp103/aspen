@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+vpn.db
+wgconfig.toml
+client_setup.md
