@@ -4,3 +4,4 @@ sqlalchemy
 wireguard-tools
 pydantic
 click
+python-wireguard
