@@ -87,7 +87,7 @@ app = FastAPI(lifespan=lifespan)
 async def verify_vpn_access(request: Request, call_next):
     """Verify that requests come from VPN IPs"""
     client_ip = request.client.host
-    db = next(get_db())
+    db = get_db()
     network = get_network(db)
 
     # Check if IP is in VPN range
