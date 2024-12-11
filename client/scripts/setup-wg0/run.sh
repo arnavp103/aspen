@@ -12,8 +12,8 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Check that we have the correct number of arguments
-if [ "$#" -ne 3 ]; then
-  echo "Usage: $0 <server_ip> <client_private_key> <server_public_key>"
+if [ "$#" -ne 4 ]; then
+  echo "Usage: $0 <server_ip> <client_private_key> <server_public_key> <assigned_ip>"
   exit
 fi
 
@@ -37,13 +37,14 @@ fi
 server_ip=$1
 client_private_key=$2
 server_public_key=$3
+assigned_ip=$4
 
 # Copy the template to wg0.conf
 cp "$CWD/wg0.conf.template" /etc/wireguard/wg0.conf
 
 # Replace the placeholders in wg0.conf
 sed -i "s/<SERVER_PUBLIC_IP>/$server_ip/g" /etc/wireguard/wg0.conf
-sed -i "s/<CLIENT_PRIVATE_KEY>/$client_private_key/g" /etc/wireguard/wg0.conf
+sed -i "s/<YOUR_PRIVATE_KEY>/$client_private_key/g" /etc/wireguard/wg0.conf
 sed -i "s/<SERVER_PUBLIC_KEY>/$server_public_key/g" /etc/wireguard/wg0.conf
-
+sed -i "s/<IP_ASSIGNED_BY_SERVER>/$assigned_ip/g" /etc/wireguard/wg0.conf
 echo "WireGuard configuration file created at /etc/wireguard/wg0.conf"

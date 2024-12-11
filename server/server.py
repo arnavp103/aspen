@@ -21,7 +21,8 @@ from .database import (
     get_peer_by_ip,
     Invitation,
     add_peer,
-    mark_invitation_used
+    mark_invitation_used,
+    get_pending_invitations,
 )
 from .monitor import WireGuardMonitor
 
@@ -60,6 +61,7 @@ async def lifespan(app: FastAPI):
     if not network:
         raise Exception("No network configuration found")
 
+    print("Setting up WireGuard server...")
     # Get the server's VPN IP
     network_addr = ipaddress.ip_network(network.cidr)
     server_ip = str(next(network_addr.hosts()))  # First IP in network
@@ -76,6 +78,14 @@ async def lifespan(app: FastAPI):
             print(f"Adding peer {peer.name} with IP {peer.ip_address} to WireGuard")
             client_key = Key(peer.public_key)
             conn = ClientConnection(client_key, peer.ip_address)
+            wg_server.add_client(conn)
+
+        # Add all pending invitations
+        invitations = get_pending_invitations(db)
+        for invitation in invitations:
+            print(f"Adding pending invitation {invitation.name} with IP {invitation.assigned_ip} to WireGuard")
+            temp_key = Key(invitation.temp_public_key)
+            conn = ClientConnection(temp_key, invitation.assigned_ip)
             wg_server.add_client(conn)
 
         # Start monitoring
@@ -287,6 +297,8 @@ async def redeem_invitation(
     """Redeem an invitation by replacing temporary key with permanent one"""
     # Get peer's VPN IP
     client_ip = request.client.host
+
+    print(f"[server]: Redeeming invitation for IP {client_ip}")
     
     # Find invitation by assigned IP
     invitation = db.query(Invitation).filter_by(
@@ -318,10 +330,10 @@ async def redeem_invitation(
             new_conn = ClientConnection(new_client_key, invitation.assigned_ip)
             wg_server.add_client(new_conn)
             
-            # Remove temporary peer
-            if not remove_wireguard_peer(invitation.temp_public_key):
-                # If removal fails, try to continue anyway as the new peer is working
-                print(f"Warning: Failed to remove temporary peer {invitation.temp_public_key}")
+            # # Remove temporary peer
+            # if not remove_wireguard_peer(invitation.temp_public_key):
+            #     # If removal fails, try to continue anyway as the new peer is working
+            #     print(f"Warning: Failed to remove temporary peer {invitation.temp_public_key}")
         
         # Add permanent peer to database
         peer = add_peer(
@@ -343,7 +355,7 @@ async def redeem_invitation(
         }
         
     except Exception as e:
-        remove_wireguard_peer(redemption.public_key)  # Remove failed permanent peer
+        # remove_wireguard_peer(redemption.public_key)  # Remove failed permanent peer
         # If anything fails, try to restore temporary peer
         if wg_server:
             temp_client_key = Key(invitation.temp_public_key)

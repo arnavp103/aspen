@@ -1,4 +1,4 @@
-# aspen/cli.py
+"""Command-line interface for the Aspen VPN server"""
 import click
 import ipaddress
 from python_wireguard import Key
@@ -60,7 +60,7 @@ def new():
 
     click.echo(f"\nNetwork {network.name} created successfully")
     click.echo(f"Server public key: {network.server_public_key}")
-    click.echo(f"Next step: Add peers using 'aspen add-peer'")
+    click.echo(f"Next step: Add peers using 'aspen-server add-peer'")
 
 
 @cli.command()
@@ -71,7 +71,7 @@ def create_peer(admin: bool):
     network = get_network(db)
 
     if not network:
-        click.echo("No network configured. Run 'aspen new' first.")
+        click.echo("No network configured. Run 'aspen-server new' first.")
         return
 
     # Get peer name
@@ -160,7 +160,7 @@ def invite(admin: bool, output: str):
     network = get_network(db)
     
     if not network:
-        click.echo("No network configured. Run 'aspen new' first.")
+        click.echo("No network configured. Run 'aspen-server new' first.")
         return
 
     # Get peer name
