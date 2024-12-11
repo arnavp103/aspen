@@ -81,7 +81,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Error setting up WireGuard: {e}")
         if wg_server:
-            wg_server.disable()
+            wg_server.delete_interface()
         if wg_monitor:
             await wg_monitor.stop()
         raise e
@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     if wg_server:
-        wg_server.disable()
+        wg_server.delete_interface()
     if wg_monitor:
         await wg_monitor.stop()
 

@@ -52,9 +52,13 @@ class WireGuardMonitor:
                     endpoint = parts[2] if parts[2] else None
                     latest_handshake = int(parts[4]) if parts[4] else 0
 
+                    curr_tz = datetime.now().astimezone().tzinfo
+
                     peers[public_key] = {
                         "endpoint": endpoint,
-                        "last_handshake": datetime.fromtimestamp(latest_handshake)
+                        "last_handshake": datetime.fromtimestamp(
+                            latest_handshake, curr_tz
+                        )
                         if latest_handshake > 0
                         else None,
                     }
