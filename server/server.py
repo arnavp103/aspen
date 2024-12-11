@@ -18,6 +18,9 @@ from .database import (
     disable_peer,
     get_peer_by_name,
     get_peer_by_ip,
+    Invitation,
+    add_peer,
+    mark_invitation_used
 )
 from .monitor import WireGuardMonitor
 
@@ -241,3 +244,84 @@ async def get_status(request: Request, db: Session = Depends(get_db)):
         "admin_rights": requesting_peer.is_admin if requesting_peer else False,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+class RedeemInvitation(BaseModel):
+    public_key: str
+
+@app.post("/invitations/redeem")
+async def redeem_invitation(
+    request: Request,
+    redemption: RedeemInvitation,
+    db: Session = Depends(get_db)
+):
+    """Redeem an invitation by replacing temporary key with permanent one"""
+    # Get peer's VPN IP
+    client_ip = request.client.host
+    
+    # Find invitation by assigned IP
+    invitation = db.query(Invitation).filter_by(
+        assigned_ip=client_ip,
+        is_used=False
+    ).first()
+    
+    if not invitation:
+        raise HTTPException(
+            status_code=404,
+            detail="No pending invitation found for this IP"
+        )
+    
+    try:
+        # Validate the new public key
+        new_key = Key(redemption.public_key)
+    except:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid public key format"
+        )
+
+    try:
+        # First add the new permanent peer to WireGuard
+        # This ensures we don't lose connection if something fails
+        if wg_server:
+            # Add new peer first
+            new_client_key = Key(redemption.public_key)
+            new_conn = ClientConnection(new_client_key, invitation.assigned_ip)
+            wg_server.add_client(new_conn)
+            
+            # Remove temporary peer
+            temp_client_key = Key(invitation.temp_public_key)
+            # Since python_wireguard doesn't have a direct remove method,
+            # we rebuild the config without this peer
+            active_peers = get_active_peers(db)
+            for peer in active_peers:
+                client_key = Key(peer.public_key)
+                conn = ClientConnection(client_key, peer.ip_address)
+                wg_server.add_client(conn)
+        
+        # Add permanent peer to database
+        peer = add_peer(
+            db,
+            name=invitation.name,
+            ip_address=invitation.assigned_ip,
+            public_key=redemption.public_key,
+            is_admin=invitation.is_admin
+        )
+        
+        # Mark invitation as used
+        mark_invitation_used(db, invitation.token)
+        
+        return {
+            "status": "success",
+            "name": peer.name,
+            "ip_address": peer.ip_address,
+            "is_admin": peer.is_admin
+        }
+        
+    except Exception as e:
+        # If anything fails, try to restore temporary peer
+        if wg_server:
+            temp_client_key = Key(invitation.temp_public_key)
+            temp_conn = ClientConnection(temp_client_key, invitation.assigned_ip)
+            wg_server.add_client(temp_conn)
+        raise HTTPException(status_code=500, detail=str(e))

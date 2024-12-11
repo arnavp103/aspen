@@ -3,6 +3,9 @@
 from sqlalchemy import DateTime, create_engine, Column, Integer, String, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+import uuid
+
+from typing import Optional
 
 from datetime import datetime, timezone
 import os
@@ -33,9 +36,21 @@ class Peer(Base):
     is_admin = Column(Boolean, default=False)
     last_handshake = Column(DateTime, nullable=True)
     last_endpoint = Column(String, nullable=True)
-    # todo: check
     created_at = Column(DateTime, server_default=str(datetime.now(timezone.utc)))
 
+
+class Invitation(Base):
+    __tablename__ = "invitations"
+    
+    id = Column(Integer, primary_key=True)
+    token = Column(String, unique=True, nullable=False)
+    name = Column(String, nullable=True)
+    temp_private_key = Column(String, nullable=False)  # Store temporarily
+    temp_public_key = Column(String, nullable=False)
+    assigned_ip = Column(String, unique=True, nullable=False)
+    is_admin = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=str(datetime.now(timezone.utc)))
+    is_used = Column(Boolean, default=False)
 
 # DATABASE_PATH = os.path.expanduser("~/.local/share/simplevpn/")
 # os.makedirs(DATABASE_PATH, exist_ok=True)
@@ -158,3 +173,61 @@ def update_peer_status(
 def get_all_peers(db):
     """Get all peers with their status"""
     return db.query(Peer).all()
+
+
+def create_invitation(db, name: str, assigned_ip: str, is_admin: bool = False) -> dict:
+    """Create a new invitation"""
+    from python_wireguard import Key, ClientConnection  # Import here to avoid circular imports
+    from .server import wg_server  # Import here to avoid circular imports
+    
+    # Generate temporary keypair
+    private, public = Key.key_pair()
+    
+    # Generate unique token
+    token = str(uuid.uuid4())
+    
+    invitation = Invitation(
+        token=token,
+        name=name,
+        temp_private_key=str(private),
+        temp_public_key=str(public),
+        assigned_ip=assigned_ip,
+        is_admin=is_admin,
+    )
+
+    # Add to WireGuard server
+    if wg_server:
+        client_key = Key(str(public))
+        conn = ClientConnection(client_key, assigned_ip)
+        wg_server.add_client(conn)
+    else:
+        raise Exception("WireGuard server not initialized for invitation creation. Try serving the application first with aspen-server serve")
+    
+    db.add(invitation)
+    db.commit()
+    
+    # Return data needed for invitation file
+    return {
+        'name': name,
+        'temp_private_key': str(private),
+        'server_public_key': get_network(db).server_public_key,
+        'assigned_ip': assigned_ip
+    }
+
+def get_invitation(db, token: str) -> Optional[Invitation]:
+    """Get an invitation by token"""
+    return db.query(Invitation).filter_by(token=token, is_used=False).first()
+
+def mark_invitation_used(db, token: str) -> bool:
+    """Mark an invitation as used"""
+    invitation = get_invitation(db, token)
+    if invitation and not invitation.is_used:
+        invitation.is_used = True
+        db.commit()
+        return True
+    return False
+
+# Add to existing methods
+def get_pending_invitations(db):
+    """Get all unused invitations"""
+    return db.query(Invitation).filter_by(is_used=False).all()
