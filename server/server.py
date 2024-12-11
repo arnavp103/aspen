@@ -1,14 +1,16 @@
 # aspen/server.py
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Depends, Request
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from contextlib import asynccontextmanager
 from python_wireguard import Server, ClientConnection, Key
-from typing import Optional
+from typing import List, Optional
 import ipaddress
 from functools import wraps
 
 from .database import (
+    get_all_peers,
     get_db,
     get_network,
     get_active_peers,
@@ -17,9 +19,12 @@ from .database import (
     get_peer_by_name,
     get_peer_by_ip,
 )
+from .monitor import WireGuardMonitor
 
 # Global server instance
 wg_server: Optional[Server] = None
+# Global monitor instance
+wg_monitor: Optional[WireGuardMonitor] = None
 
 
 async def verify_admin(request: Request, db: Session = Depends(get_db)):
@@ -55,7 +60,7 @@ async def lifespan(app: FastAPI):
     network_addr = ipaddress.ip_network(network.cidr)
     server_ip = str(next(network_addr.hosts()))  # First IP in network
 
-    global wg_server
+    global wg_server, wg_monitor
     try:
         private_key = Key(network.server_private_key)
         wg_server = Server("wg0", private_key, f"{server_ip}/24", network.listen_port)
@@ -64,20 +69,30 @@ async def lifespan(app: FastAPI):
         # Add all active peers
         peers = get_active_peers(db)
         for peer in peers:
+            print(f"Adding peer {peer.name} with IP {peer.ip_address} to WireGuard")
             client_key = Key(peer.public_key)
             conn = ClientConnection(client_key, peer.ip_address)
             wg_server.add_client(conn)
+
+        # Start monitoring
+        wg_monitor = WireGuardMonitor("wg0")
+        await wg_monitor.start()
 
     except Exception as e:
         print(f"Error setting up WireGuard: {e}")
         if wg_server:
             wg_server.disable()
+        if wg_monitor:
+            await wg_monitor.stop()
         raise e
 
     yield
 
+    # Cleanup
     if wg_server:
         wg_server.disable()
+    if wg_monitor:
+        await wg_monitor.stop()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -105,12 +120,62 @@ async def verify_vpn_access(request: Request, call_next):
     return response
 
 
-@app.get("/peers")
+class PeerStatus(BaseModel):
+    name: str
+    ip_address: str
+    is_active: bool
+    is_admin: bool
+    last_handshake: Optional[datetime]
+    last_endpoint: Optional[str]
+    is_online: bool  # Determined by recent handshake
+
+    class Config:
+        # map Pydantic model from SQLAlchemy model
+        from_attributes = True
+
+
+def is_peer_online(last_handshake: Optional[datetime]) -> bool:
+    """Consider peer online if handshake was within last 3 minutes"""
+    if not last_handshake:
+        return False
+    now = datetime.now(timezone.utc)
+    if last_handshake.tzinfo is None:  # Make naive datetime aware
+        last_handshake = last_handshake.replace(tzinfo=timezone.utc)
+    return (now - last_handshake).total_seconds() < 180  # 3 minutes
+
+
+@app.get("/peers/status", response_model=List[PeerStatus])
 @admin_required
+async def get_peer_status(request: Request, db: Session = Depends(get_db)):
+    """Get status of all peers (admin only)"""
+    peers = get_all_peers(db)
+    return [
+        PeerStatus(
+            name=peer.name,
+            ip_address=peer.ip_address,
+            is_active=peer.is_active,
+            is_admin=peer.is_admin,
+            last_handshake=peer.last_handshake,
+            last_endpoint=peer.last_endpoint,
+            is_online=is_peer_online(peer.last_handshake),
+        )
+        for peer in peers
+    ]
+
+
+@app.get("/peers")
 async def list_peers(request: Request, db: Session = Depends(get_db)):
-    """List all peers (admin only)"""
-    peers = get_active_peers(db)
-    return [{"name": p.name, "ip": p.ip_address, "is_admin": p.is_admin} for p in peers]
+    """List all peers"""
+    peers = get_all_peers(db)
+    return [
+        {
+            "name": p.name,
+            "ip": p.ip_address,
+            "online": is_peer_online(p.last_handshake),
+            "last_handshake": p.last_handshake,
+        }
+        for p in peers
+    ]
 
 
 @app.post("/peers/{name}/enable")

@@ -1,8 +1,10 @@
 """Database models and functions for the server"""
 
-from sqlalchemy import create_engine, Column, Integer, String, Boolean
+from sqlalchemy import DateTime, create_engine, Column, Integer, String, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+
+from datetime import datetime, timezone
 import os
 
 Base = declarative_base()
@@ -29,6 +31,10 @@ class Peer(Base):
     public_key = Column(String, unique=True)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
+    last_handshake = Column(DateTime, nullable=True)
+    last_endpoint = Column(String, nullable=True)
+    # todo: check
+    created_at = Column(DateTime, server_default=str(datetime.now(timezone.utc)))
 
 
 # DATABASE_PATH = os.path.expanduser("~/.local/share/simplevpn/")
@@ -133,3 +139,22 @@ def get_peer_by_name(db, name: str):
 def get_peer_by_ip(db, ip_address: str):
     """Get a peer by IP address"""
     return db.query(Peer).filter_by(ip_address=ip_address).first()
+
+
+def update_peer_status(
+    db, public_key: str, handshake_time: datetime, endpoint: str = None
+):
+    """Update given public key's peer's last handshake time and endpoint"""
+    peer = db.query(Peer).filter_by(public_key=public_key).first()
+    if peer:
+        peer.last_handshake = handshake_time
+        if endpoint:
+            peer.last_endpoint = endpoint
+        db.commit()
+        return True
+    return False
+
+
+def get_all_peers(db):
+    """Get all peers with their status"""
+    return db.query(Peer).all()

@@ -1,4 +1,5 @@
-# aspen/cli.py
+"""Command line interface for Aspen VPN server management"""
+
 import click
 import ipaddress
 from python_wireguard import Key
