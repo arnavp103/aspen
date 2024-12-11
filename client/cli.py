@@ -14,6 +14,7 @@ from python_wireguard import Key
 import os
 cwd = os.getcwd()
 import functools
+from time import sleep
 
 
 
@@ -79,7 +80,7 @@ def send_key(server_ip: str, file: str, pkey: str):
             _, public = pickle.load(f)
             public_key = public
 
-    url = f"http://{server_ip}:8000/register"
+    url = f"http://{server_ip}:8000/invitations/redeem"
     data = {"public_key": public_key}
     response = requests.post(url, json=data)
     if response.status_code == 200:
@@ -127,7 +128,7 @@ def teardown():
 
 
 @cli.command()
-@click.option("--ip", help="IP address of the server", type=str, default="10.0.0.1")
+@click.option("--ip", help="IP address of the server", type=str, default="10.42.0.1")
 @click.option("--no-add", is_flag=True, help="Don't add the peer to the /etc/hosts file")
 @require_wg_running
 def list(ip: str, no_add: bool):
@@ -152,21 +153,22 @@ def list(ip: str, no_add: bool):
 
 @cli.command()
 @click.argument("invite_file", type=str)
-def register(invite_file: str):
+@click.option("--ip", help="IP address of the server", type=str, default="10.42.0.1")
+def register(invite_file: str, ip: str):
     """Register the client with the server given the invitation file"""
 
-    with open(invite_file, "rb") as f:
+    with open(invite_file, "r") as f:
         invite = json.loads(f)
 
-        server_ip = invite["ip_address"]
+        server_ip = ip
         real_server_public_key = invite.server["public_key"]
         server_public_key = invite["server_public_key"]
         client_private_key = invite["client_private_key"]
 
         # Establish a temporary connection to the server
-        make_wg_config(server_ip, client_private_key, server_public_key)
+        make_wg_config(server_ip, client_private_key, real_server_public_key); #server_public_key)
         up()
-
+        sleep(0.5)
         private_key, public_key = generate_key(no_save=True)
 
         # Send the public key to the server
@@ -178,9 +180,14 @@ def register(invite_file: str):
             teardown()
             return
         
+        teardown()
+        sleep(0.5)
+
         # Establish a permanent connection to the server
         make_wg_config(server_ip, private_key, real_server_public_key)
+        sleep(0.5)
         up()
+        sleep(0.5)
 
         # Test ping the server and check if it's successful
         client = Client(private_key, server_ip)
