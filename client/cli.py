@@ -15,6 +15,9 @@ import os
 cwd = os.getcwd()
 import functools
 
+
+
+
 @click.group()
 def cli():
     """Aspen VPN client sided tool"""
@@ -43,6 +46,21 @@ def require_wg_running(func):
             exit(1)
         return func(*args, **kwargs)
     return wrapper
+
+@cli.command()
+@click.argument("ip", type=str)
+@click.argument("alias", type=str)
+def add_host(ip: str, alias: str):
+    """Add a host to the /etc/hosts file"""
+    file_path = os.path.join(cwd, "client/scripts/hosts/add-host.sh")
+    subprocess.run(["sudo", "bash", file_path, ip, alias])
+
+@cli.command()
+@click.argument("alias", type=str)
+def remove_host(alias: str):
+    """Remove a host from the /etc/hosts file"""
+    file_path = os.path.join(cwd, "client/scripts/hosts/remove-host.sh")
+    subprocess.run(["sudo", "bash", file_path, alias])
 
 @cli.command()
 @click.argument("server_ip", type=str)
@@ -110,8 +128,9 @@ def teardown():
 
 @cli.command()
 @click.option("--ip", help="IP address of the server", type=str, default="10.0.0.1")
+@click.option("--no-add", is_flag=True, help="Don't add the peer to the /etc/hosts file")
 @require_wg_running
-def list(ip: str):
+def list(ip: str, no_add: bool):
     """List all the peers in the network"""
 
     # Get the list of peers
@@ -125,8 +144,11 @@ def list(ip: str):
     click.echo("List of peers")
     peers = response.json()
     for peer in peers:
-        click.echo(f"Name: {peer['name']} (ip={peer['ip']})   Online: {peer['online']}    Last Handshake: {peer['last_handshake']}")
+        click.echo(f"Name: aspn.{peer['name']} (ip={peer['ip']})   Online: {peer['online']}    Last Handshake: {peer['last_handshake']}")
         click.echo()
+
+        if not no_add:
+            add_host(peer["ip"], f"aspn.{peer["name"]}")
 
 @cli.command()
 @click.argument("invite_file", type=str)

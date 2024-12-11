@@ -1,0 +1,11 @@
+{
+  "name": "lance",
+  "temp_private_key": "sKauXVq9qOQP95dgfLL158IxExcooujjrSabzX1VPHw=",
+  "server": {
+    "public_key": "KjCQTqsAH/x36zqkjIG7Wwci41AJBDXOR4mY9GBJESQ=",
+    "endpoint": "",
+    "port": 51820
+  },
+  "ip_address": "10.42.0.6",
+  "network_cidr": "10.42.0.0/16"
+}

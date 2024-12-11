@@ -177,8 +177,8 @@ def get_all_peers(db):
 
 def create_invitation(db, name: str, assigned_ip: str, is_admin: bool = False) -> dict:
     """Create a new invitation"""
-    from python_wireguard import Key, ClientConnection  # Import here to avoid circular imports
-    from .server import wg_server  # Import here to avoid circular imports
+    from python_wireguard import Key  # Import here to avoid circular imports
+    from .server import add_wireguard_peer
     
     # Generate temporary keypair
     private, public = Key.key_pair()
@@ -195,13 +195,6 @@ def create_invitation(db, name: str, assigned_ip: str, is_admin: bool = False) -
         is_admin=is_admin,
     )
 
-    # Add to WireGuard server
-    if wg_server:
-        client_key = Key(str(public))
-        conn = ClientConnection(client_key, assigned_ip)
-        wg_server.add_client(conn)
-    else:
-        raise Exception("WireGuard server not initialized for invitation creation. Try serving the application first with aspen-server serve")
     
     db.add(invitation)
     db.commit()

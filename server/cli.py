@@ -209,7 +209,7 @@ def invite(admin: bool, output: str):
     
     # Create invitation file
     config = {
-        "token": invitation['token'],
+        "name": invitation['name'],
         "temp_private_key": invitation['temp_private_key'],
         "server": {
             "public_key": invitation['server_public_key'],

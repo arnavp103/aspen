@@ -8,6 +8,7 @@ from python_wireguard import Server, ClientConnection, Key
 from typing import List, Optional
 import ipaddress
 from functools import wraps
+import subprocess
 
 from .database import (
     get_all_peers,
@@ -249,6 +250,34 @@ async def get_status(request: Request, db: Session = Depends(get_db)):
 class RedeemInvitation(BaseModel):
     public_key: str
 
+def remove_wireguard_peer(public_key: str, interface: str = "wg0") -> bool:
+    """Remove a peer from WireGuard interface"""
+    try:
+        subprocess.run([
+            "sudo",
+            "wg", "set", interface,
+            "peer", public_key,
+            "remove"
+        ], check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Error removing peer: {e}")
+        return False
+    
+def add_wireguard_peer(public_key: str, allowed_ip: str, interface: str = "wg0") -> bool:
+    """Add a peer to WireGuard interface"""
+    try:
+        subprocess.run([
+            "sudo",
+            "wg", "set", interface,
+            "peer", public_key,
+            "allowed-ips", allowed_ip
+        ], check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Error adding peer: {e}")
+        return False
+
 @app.post("/invitations/redeem")
 async def redeem_invitation(
     request: Request,
@@ -290,14 +319,9 @@ async def redeem_invitation(
             wg_server.add_client(new_conn)
             
             # Remove temporary peer
-            temp_client_key = Key(invitation.temp_public_key)
-            # Since python_wireguard doesn't have a direct remove method,
-            # we rebuild the config without this peer
-            active_peers = get_active_peers(db)
-            for peer in active_peers:
-                client_key = Key(peer.public_key)
-                conn = ClientConnection(client_key, peer.ip_address)
-                wg_server.add_client(conn)
+            if not remove_wireguard_peer(invitation.temp_public_key):
+                # If removal fails, try to continue anyway as the new peer is working
+                print(f"Warning: Failed to remove temporary peer {invitation.temp_public_key}")
         
         # Add permanent peer to database
         peer = add_peer(
@@ -319,6 +343,7 @@ async def redeem_invitation(
         }
         
     except Exception as e:
+        remove_wireguard_peer(redemption.public_key)  # Remove failed permanent peer
         # If anything fails, try to restore temporary peer
         if wg_server:
             temp_client_key = Key(invitation.temp_public_key)

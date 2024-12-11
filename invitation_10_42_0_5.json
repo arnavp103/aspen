@@ -1,0 +1,11 @@
+{
+  "name": "arnav",
+  "temp_private_key": "SEfevfNUJqmJxt1+eHlKmpPmMxUOUoiaIiBV5sPjpU8=",
+  "server": {
+    "public_key": "KjCQTqsAH/x36zqkjIG7Wwci41AJBDXOR4mY9GBJESQ=",
+    "endpoint": "",
+    "port": 51820
+  },
+  "ip_address": "10.42.0.5",
+  "network_cidr": "10.42.0.0/16"
+}
